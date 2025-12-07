@@ -1,23 +1,17 @@
-import { Sequelize } from "sequelize";
-import dotenv from "dotenv";
-dotenv.config();
+require("dotenv").config();
 
-export const sequelize = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USER,
-  process.env.DB_PASS,
-  {
-    host: process.env.DB_HOST,
-    dialect: "mysql",
-    logging: false,
-  }
-);
+module.exports = {
+  HOST: process.env.DB_HOST,
+  USER: process.env.DB_USER,
+  PASSWORD: process.env.DB_PASSWORD,
+  DB: process.env.DB_NAME,
+  dialect: process.env.DB_DIALECT,
+  logging: process.env.DB_LOGGING === "true", // convert string to boolean
 
-export const connectDB = async () => {
-  try {
-    await sequelize.authenticate();
-    console.log("MySQL connected with Sequelize.");
-  } catch (error) {
-    console.error("Database connection failed:", error);
-  }
+  pool: {
+    max: parseInt(process.env.DB_POOL_MAX, 10),
+    min: parseInt(process.env.DB_POOL_MIN, 10),
+    acquire: parseInt(process.env.DB_POOL_ACQUIRE, 10),
+    idle: parseInt(process.env.DB_POOL_IDLE, 10),
+  },
 };
