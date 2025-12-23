@@ -1,66 +1,72 @@
-const { QueryTypes } = require("sequelize");
+const { Op, Sequelize } = require("sequelize");
 const db = require("../models/model.js");
-const sequelize = db.sequelize;
-
 const Mechanic = db.Mechanic;
+const Category = db.Category;
 
-exports.getNearbyMechanics = async (req, res) => {
+exports.getMechanicsByCategoryID = async (req, res) => {
   try {
-    let { lat, lng, radius } = req.query;
+    const { categoryId, lat, lng } = req.body;
 
-    if (!lat || !lng) {
-      return res
-        .status(400)
-        .json({ message: "Location required! Provide lat and lng." });
+    if (!categoryId || !lat || !lng) {
+      return res.status(400).json({
+        message: "categoryId and location required",
+      });
     }
 
-    lat = parseFloat(lat);
-    lng = parseFloat(lng);
-    if (Number.isNaN(lat) || Number.isNaN(lng)) {
-      return res
-        .status(400)
-        .json({ message: "Invalid latitude or longitude." });
-    }
+    const limit = parseInt(req.body.limit) || 2;
+    const offset = parseInt(req.body.offset) || 0;
+    
+    const radius = 1000; // KM
 
-    radius = radius ? parseFloat(radius) : 5; // default 5 km
-    if (Number.isNaN(radius) || radius <= 0) radius = 5;
+    const mechanics = await Mechanic.findAll({
+      where: {
+        Category_Id: categoryId,
+        isAvailable: 1,
+        [Op.and]: Sequelize.literal(`
+          (6371 * acos(
+            cos(radians(${lat}))
+            * cos(radians(latitude))
+            * cos(radians(longitude) - radians(${lng}))
+            + sin(radians(${lat}))
+            * sin(radians(latitude))
+          )) <= ${radius}
+        `),
+      },
 
-    // Approximate bounding box for performance (1 degree ~ 111 km)
-    const latDiff = radius / 111;
-    const lngDiff = radius / (111 * Math.cos((lat * Math.PI) / 180));
-
-    const mechanics = await sequelize.query(
-      `SELECT name, phone, serviceType, latitude, longitude,
-        (6371 * acos(
-          cos(radians(:lat)) *
-          cos(radians(latitude)) *
-          cos(radians(longitude) - radians(:lng)) +
-          sin(radians(:lat)) *
-          sin(radians(latitude))
-        )) AS distance
-      FROM Mechanics
-      WHERE latitude BETWEEN :latMin AND :latMax
-        AND longitude BETWEEN :lngMin AND :lngMax
-      HAVING distance <= :radius
-      ORDER BY distance ASC`,
-      {
-        replacements: {
-          lat,
-          lng,
-          radius,
-          latMin: lat - latDiff,
-          latMax: lat + latDiff,
-          lngMin: lng - lngDiff,
-          lngMax: lng + lngDiff,
+      include: [
+        {
+          model: Category,
+          as: "category",
+          attributes: ["Category_Id", "Category_Name"],
         },
-        type: sequelize.QueryTypes.SELECT,
-      }
-    );
+      ],
 
-    res.json({ mechanics });
+      limit,
+      offset: parseInt(offset),
+      order: [["Mechanic_Id", "ASC"]],
+    });
+
+    const totalCount = await Mechanic.count({
+      where: {
+        Category_Id: categoryId,
+        isAvailable: 1,
+      },
+    });
+
+    res.status(200).json({
+      mechanics,
+      pagination: {
+        limit,
+        offset: parseInt(offset),
+        total: totalCount,
+        hasMore: offset + limit < totalCount,
+      },
+    });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server error!" });
+    res.status(500).json({ message: "Server error" });
   }
 };
+
+
 

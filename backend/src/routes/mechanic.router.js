@@ -1,7 +1,8 @@
-const express=require('express');
+const express = require("express");
 const router = express.Router();
-const mechanicController = require('../controllers/mechanic.controller.js');    
+const mechanicController = require("../controllers/mechanic.controller");
 
-router.get('/nearby', mechanicController.getNearbyMechanics);
+router.post("/by-category", mechanicController.getMechanicsByCategoryID);
+
 
 module.exports = router;
