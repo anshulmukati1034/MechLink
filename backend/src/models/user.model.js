@@ -9,30 +9,38 @@ module.exports = (sequelize, DataTypes) => {
       },
       Name: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
       },
       Email: {
         type: DataTypes.STRING,
         unique: true,
         allowNull: false,
-        validate: {
-          isEmail: true,
-        },
+        validate: { isEmail: true },
       },
       Password: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
       },
       Role: {
         type: DataTypes.INTEGER,
-        allowNull: false,
-        defaultValue: 1, // 1 = user, 3 = admin
+        defaultValue: 1,
+      },
+      otp: {
+        type: DataTypes.STRING(6),
+      },
+      otp_expires: {
+        type: DataTypes.DATE,
+      },
+      isVerified: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
       },
     },
     {
-      tableName: "users", 
+      tableName: "users",
       timestamps: true,
     }
   );
+
   return User;
 };

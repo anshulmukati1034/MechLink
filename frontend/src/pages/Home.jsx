@@ -1,131 +1,154 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import Swal from "sweetalert2";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../utils/api.js";
+import useDebounce from "../hooks/useDebounce";
+import axios from "axios"; 
 
 const Home = () => {
   const [categories, setCategories] = useState([]);
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [location, setLocation] = useState({ lat: null, lng: null });
-  const navigate = useNavigate();
+  const [address, setAddress] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  /* -------------- GEO LOCATION ---------------- */
+  const navigate = useNavigate();
+  const debouncedSearch = useDebounce(search);
+
+  /* ---------------- ICON HANDLER ---------------- */
+  const getIcon = useCallback((name) => {
+    switch (name.toLowerCase()) {
+      case "car": return "🚗";
+      case "bike": return "🏍️";
+      case "bus": return "🚌";
+      case "truck": return "🚚";
+      case "auto": return "🛺";
+      case "tractor": return "🚜";
+      default: return "🔧";
+    }
+  }, []);
+
+  /* ---------------- REVERSE GEOCODING (CACHED) ---------------- */
+  const fetchLocationName = async (lat, lng) => {
+    const cacheKey = `addr_${lat.toFixed(3)}_${lng.toFixed(3)}`;
+    const cached = localStorage.getItem(cacheKey);
+
+    if (cached) {
+      setAddress(cached);
+      return;
+    }
+
+    try {
+      const res = await axios.get(
+        "https://nominatim.openstreetmap.org/reverse",
+        {
+          params: { lat, lon: lng, format: "json" },
+        }
+      );
+
+      const addr = res.data.address;
+
+      const area =
+        addr.suburb ||
+        addr.neighbourhood ||
+        addr.residential ||
+        addr.road ||
+        "";
+
+      const city =
+        addr.city ||
+        addr.town ||
+        addr.village ||
+        "";
+
+      const finalAddress =
+        area && city ? `${area}, ${city}` : city || area || "Unknown Location";
+
+      setAddress(finalAddress);
+      localStorage.setItem(cacheKey, finalAddress);
+    } catch {
+      setAddress("Location unavailable");
+    }
+  };
+
+  /* ---------------- GEO LOCATION ---------------- */
   useEffect(() => {
     if (!navigator.geolocation) {
-      Swal.fire({
-        icon: "error",
-        title: "Geolocation Not Supported",
-        text: "Your browser does not support location services.",
-        confirmButtonColor: "#2563eb",
-      });
+      Swal.fire("Error", "Geolocation not supported", "error");
       return;
     }
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setLocation({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        });
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setLocation({ lat: latitude, lng: longitude });
+        fetchLocationName(latitude, longitude);
       },
-      (error) => {
-        Swal.fire({
-          icon: "warning",
-          title: "Location Permission Denied",
-          text: "Please allow location access to find nearby mechanics.",
-          confirmButtonColor: "#2563eb",
-        });
+      () => {
+        Swal.fire(
+          "Permission Denied",
+          "Allow location access to find nearby mechanics",
+          "warning"
+        );
       }
     );
   }, []);
 
-  /* -------------- FETCH CATEGORIES ---------------- */
+  /*  FETCH CATEGORIES (AXIOS INSTANCE)  */
   useEffect(() => {
     const fetchCategories = async () => {
+      setLoading(true);
       try {
-        const res = await axios.get("http://localhost:3001/api/categories"); // tumhara API route
+        const res = await api.get("/categories");
+
         const data = res.data.categories.map((cat) => ({
           id: cat.Category_Id,
           name: cat.Category_Name,
           icon: getIcon(cat.Category_Name),
         }));
+
         setCategories(data);
-      } catch (err) {
-        console.error(err);
-        Swal.fire({
-          icon: "error",
-          title: "API Error",
-          text: "Could not fetch categories.",
-        });
+      } catch {
+        Swal.fire("Error", "Could not fetch categories", "error");
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchCategories();
-  }, []);
+  }, [getIcon]);
 
+  /* ---------------- FILTERED LIST ---------------- */
+  const filteredCategories = useMemo(() => {
+    return categories.filter((cat) =>
+      cat.name.toLowerCase().includes(debouncedSearch.toLowerCase())
+    );
+  }, [categories, debouncedSearch]);
+
+  /* ---------------- LOGOUT ---------------- */
   const handleLogout = async () => {
-    const result = await Swal.fire({
-      title: "Are you sure?",
-      text: "You will be logged out!",
+    const res = await Swal.fire({
+      title: "Logout?",
+      text: "You will be logged out",
       icon: "warning",
       showCancelButton: true,
-      confirmButtonText: "Yes, logout",
-      cancelButtonText: "Cancel",
-      confirmButtonColor: "#2563eb",
-      cancelButtonColor: "#d33",
+      confirmButtonText: "Yes",
     });
 
-    if (result.isConfirmed) {
-      try {
-        await axios.post("http://localhost:3001/api/user/logout");
-        localStorage.removeItem("token");
-        Swal.fire("Logged out!", "You have been logged out.", "success");
-        navigate("/login");
-      } catch (error) {
-        Swal.fire("Error", "Logout failed!", "error");
-      }
+    if (res.isConfirmed) {
+      await api.post("/user/logout");
+      localStorage.removeItem("token");
+      navigate("/login");
     }
   };
 
-  /* -------------- DEBOUNCE SEARCH ---------------- */
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search), 400);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  const getIcon = (name) => {
-    switch (name.toLowerCase()) {
-      case "car":
-        return "🚗";
-      case "bike":
-        return "🏍️";
-      case "bus":
-        return "🚌";
-      case "truck":
-        return "🚚";
-      case "auto":
-        return "🛺";
-      case "tractor":
-        return "🚜";
-      default:
-        return "🔧";
-    }
-  };
-
-  const filteredCategories = categories.filter((cat) =>
-    cat.name.toLowerCase().includes(debouncedSearch.toLowerCase())
-  );
-
+  /* ---------------- CARD CLICK ---------------- */
   const handleCardClick = (cat) => {
     if (!location.lat || !location.lng) {
-      Swal.fire({
-        icon: "warning",
-        title: "Location not found",
-        text: "Please allow location access.",
-      });
+      Swal.fire("Error", "Location not available", "warning");
       return;
     }
+
     navigate("/mechanics", {
       state: {
         categoryId: cat.id,
@@ -135,57 +158,57 @@ const Home = () => {
     });
   };
 
+  /* ---------------- UI ---------------- */
   return (
- <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white px-6 py-10">
-      
-      {/* Logout Button - top-right */}
+    <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white px-6 py-10">
       <button
         onClick={handleLogout}
-        className="absolute top-6 right-6 px-4 py-2 bg-red-500 hover:bg-red-600 rounded-lg shadow-lg font-semibold transition"
+        className="absolute top-6 right-6 px-4 py-2 bg-red-500 rounded-lg"
       >
         Logout
       </button>
 
-      <h1 className="text-3xl font-semibold text-center mb-3">
+      <h1 className="text-3xl text-center mb-2">
         Find Nearby Mechanic
       </h1>
 
-      {location.lat && location.lng && (
-        <p className="text-center text-sm text-white/70 mb-8">
-          📍 Location detected
+      {address && (
+        <p className="text-center text-white/70 mb-8">
+          📍 {address}
         </p>
       )}
 
-      {/* Search */}
-      <div className="max-w-md mx-auto mb-12">
+      <div className="max-w-md mx-auto mb-10">
         <input
-          type="text"
-          placeholder="Search vehicle type..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full px-5 py-3 rounded-full bg-white/10 backdrop-blur-md text-white placeholder-white/70 outline-none shadow-lg focus:ring-2 focus:ring-blue-400/60 transition"
+          placeholder="Search vehicle type..."
+          className="w-full px-5 py-3 rounded-full bg-white/10"
         />
       </div>
 
-      {/* Cards */}
-      <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-        {filteredCategories.length > 0 ? (
-          filteredCategories.map((cat, i) => (
-            <div
-              key={i}
-              onClick={() => handleCardClick(cat)}
-              className="h-36 rounded-2xl bg-white/10 backdrop-blur-lg flex flex-col items-center justify-center cursor-pointer shadow-xl transition-all duration-300 hover:-translate-y-2 hover:scale-105 hover:bg-white/20"
-            >
-              <span className="text-4xl mb-2">{cat.icon}</span>
-              <p className="text-lg font-medium">{cat.name}</p>
-            </div>
-          ))
-        ) : (
-          <p className="col-span-full text-center text-white/70">
-            No category found
-          </p>
-        )}
-      </div>
+      {loading ? (
+        <p className="text-center">Loading categories...</p>
+      ) : (
+        <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+          {filteredCategories.length ? (
+            filteredCategories.map((cat) => (
+              <div
+                key={cat.id}
+                onClick={() => handleCardClick(cat)}
+                className="h-36 bg-white/10 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:scale-105 transition"
+              >
+                <span className="text-4xl">{cat.icon}</span>
+                <p className="mt-2">{cat.name}</p>
+              </div>
+            ))
+          ) : (
+            <p className="col-span-full text-center">
+              No category found
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 };
