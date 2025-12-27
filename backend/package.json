@@ -13,7 +13,7 @@
     "sequelize": "^6.37.7"
   },
   "scripts": {
-    "start": "nodemon src/server.js",
+    "start": "node src/server.js",
     "dev": "nodemon src/server.js"
   },
   "devDependencies": {
