@@ -103,6 +103,7 @@ exports.signupWithOtp = async (req, res) => {
 
     // Generate token
     const token = generateToken(user.id, res);
+    console.log("Generated Token:", token);
 
     res.status(201).json({
       success: true,
