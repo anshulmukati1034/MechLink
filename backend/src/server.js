@@ -9,7 +9,7 @@ const userRoutes = require("./routes/user.router.js");
 const app = express();
 app.use(
   cors({
-    origin: "http://localhost:5173",  
+    origin: "https://mechlink-frontend.onrender.com",  
     credentials: true,              
   })
 );
