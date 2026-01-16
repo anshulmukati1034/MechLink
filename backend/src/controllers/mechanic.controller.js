@@ -3,6 +3,7 @@ const db = require("../models/model.js");
 const Mechanic = db.Mechanic;
 const Category = db.Category;
 
+//getmechanic nearby based on radius
 exports.getMechanicsByCategoryID = async (req, res) => {
   try {
     const { categoryId, lat, lng } = req.body;
